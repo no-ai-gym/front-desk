@@ -1,0 +1,95 @@
+name: 24시 무인 헬스장 키오스크
+
+on:
+  issues:
+    types: [opened]
+
+# 동시 신청 시 스팸 필터 방지 및 순차 처리 대기열
+concurrency:
+  group: kiosk-registration
+  cancel-in-progress: false
+
+jobs:
+  register-member:
+    if: contains(github.event.issue.labels.*.name, 'new-member')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 회원 등록 및 템플릿 라커 발급
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.KIOSK_TOKEN }}
+          script: |
+            const org = context.repo.owner;
+            const username = context.payload.issue.user.login;
+            const issueNumber = context.issue.number;
+
+            // 1. 이미 라커가 발급된 회원인지 확인
+            try {
+              await github.rest.repos.get({ owner: org, repo: username });
+              await github.rest.issues.createComment({
+                owner: org,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `⚠️ **${username}** 회원님은 이미 개인 라커(\`https://github.com/${org}/${username}\`)를 보유하고 계십니다!`
+              });
+              await github.rest.issues.update({
+                owner: org,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                state: 'closed'
+              });
+              return;
+            } catch (e) {
+              if (e.status !== 404) throw e;
+            }
+
+            // 2. gym-template을 복사하여 개인 라커 생성
+            await github.rest.repos.createUsingTemplate({
+              template_owner: org,
+              template_repo: 'gym-template',
+              owner: org,
+              name: username,
+              description: `🏋️ ${username}'s No-AI Gym Locker`,
+              private: false,
+              include_all_branches: false
+            });
+
+            // 템플릿 파일 복사가 완료될 때까지 2초 대기
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // 3. 오거나이제이션 회원 초대장 발송
+            await github.rest.orgs.setMembershipForUser({
+              org: org,
+              username: username,
+              role: 'member'
+            });
+
+            // 4. 본인 라커에 대한 쓰기/관리 권한(maintain) 부여
+            await github.rest.repos.addCollaborator({
+              owner: org,
+              repo: username,
+              username: username,
+              permission: 'maintain'
+            });
+
+            // 5. 완료 안내 댓글 작성 및 이슈 종료
+            await github.rest.issues.createComment({
+              owner: org,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: [
+                `🎉 **${username}**님, No-AI Gym 회원 등록이 완료되었습니다!`,
+                ``,
+                `* **배정된 개인 라커:** https://github.com/${org}/${username}`,
+                `* **회원권 활성화 방법:** GitHub에 등록된 이메일 또는 [GitHub 알림(Notifications)](https://github.com/notifications)에서 **\`${org}\` 오거나이제이션 초대**와 **레포지토리 초대**를 모두 수락해 주세요.`,
+                ``,
+                `초대 수락 후 배정된 라커의 템플릿 양식에 맞춰 운동 기록을 push 하시면 됩니다. 오늘도 득근하세요! 💪`
+              ].join('\n')
+            });
+
+            await github.rest.issues.update({
+              owner: org,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              state: 'closed'
+            });
