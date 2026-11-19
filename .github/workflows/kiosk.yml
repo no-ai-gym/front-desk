@@ -1,11 +1,11 @@
-name: 24시 무인 헬스장 키오스크
+name: 회원 등록 자동화
 
 on:
   issues:
     types: [opened]
 
 concurrency:
-  group: kiosk-registration
+  group: member-registration
   cancel-in-progress: false
 
 jobs:
@@ -13,7 +13,7 @@ jobs:
     if: contains(github.event.issue.labels.*.name, 'new-member') || startsWith(github.event.issue.title, '[회원등록]')
     runs-on: ubuntu-latest
     steps:
-      - name: 회원 등록 및 템플릿 라커 발급
+      - name: 회원 등록 및 전용 레포지토리 생성
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.KIOSK_TOKEN }}
@@ -22,14 +22,14 @@ jobs:
             const username = context.payload.issue.user.login;
             const issueNumber = context.issue.number;
 
-            // 1. 이미 라커가 발급된 회원인지 확인
+            // 1. 이미 레포지토리가 생성된 회원인지 확인
             try {
               await github.rest.repos.get({ owner: org, repo: username });
               await github.rest.issues.createComment({
                 owner: org,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `⚠️ **${username}** 회원님은 이미 개인 라커(\`https://github.com/${org}/${username}\`)를 보유하고 계십니다!`
+                body: `⚠️ **${username}**님은 이미 전용 레포지토리([${org}/${username}](https://github.com/${org}/${username}))를 보유하고 있습니다.`
               });
               await github.rest.issues.update({
                 owner: org,
@@ -42,21 +42,20 @@ jobs:
               if (e.status !== 404) throw e;
             }
 
-            // 2. gym-template을 복사하여 개인 라커 생성
+            // 2. gym-template을 복사하여 개인 레포지토리 생성
             await github.rest.repos.createUsingTemplate({
               template_owner: org,
               template_repo: 'gym-template',
               owner: org,
               name: username,
-              description: `🏋️ ${username}'s No-AI Gym Locker`,
+              description: `${username}'s no-ai-gym repository`,
               private: false,
               include_all_branches: false
             });
 
-            // 템플릿 파일 복사가 완료될 때까지 2초 대기
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            // 3. 오거나이제이션 회원 초대장 발송 (이미 오너/멤버인 경우 건너뜀)
+            // 3. 오거나이제이션 회원 초대장 발송
             try {
               await github.rest.orgs.setMembershipForUser({
                 org: org,
@@ -67,7 +66,7 @@ jobs:
               console.log('이미 조직 멤버/오너이거나 초대 생략:', e.message);
             }
 
-            // 4. 본인 라커에 대한 쓰기/관리 권한(maintain) 부여
+            // 4. 본인 레포지토리에 쓰기/관리 권한(maintain) 부여
             await github.rest.repos.addCollaborator({
               owner: org,
               repo: username,
@@ -81,13 +80,13 @@ jobs:
               repo: context.repo.repo,
               issue_number: issueNumber,
               body: [
-                `🎉 **${username}**님, 개인 라커 발급이 완료되었습니다!`,
+                `✅ **${username}**님의 회원 등록 및 레포지토리 생성이 완료되었습니다.`,
                 ``,
-                `보안 정책상 아래 **두 개의 수락 버튼**을 직접 눌러주셔야 최종 활성화됩니다 (3초 소요):`,
-                `1. 👉 **[헬스장 회원권(조직 초대) 수락하기](https://github.com/orgs/${org}/invitation)**`,
-                `2. 👉 **[개인 라커 열쇠(쓰기 권한) 수락하기](https://github.com/${org}/${username}/invitations)**`,
+                `* **생성된 레포지토리:** [${org}/${username}](https://github.com/${org}/${username})`,
                 ``,
-                `수락 완료 후 배정된 라커(https://github.com/${org}/${username})에 바로 운동 기록을 push 하시면 됩니다. 오늘도 득근하세요! 💪`
+                `아래 두 초대를 모두 수락해야 해당 레포지토리에 push할 수 있습니다.`,
+                `1. [no-ai-gym 오거나이제이션 초대 수락](https://github.com/orgs/${org}/invitation)`,
+                `2. [레포지토리 쓰기 권한 초대 수락](https://github.com/${org}/${username}/invitations)`
               ].join('\n')
             });
 
