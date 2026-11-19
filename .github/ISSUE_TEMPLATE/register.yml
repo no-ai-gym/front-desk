@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        아래 **Submit new issue** 버튼을 누르면 `no-ai-gym/본인아이디` 레포지토리가 자동 생성되고 초대장이 발송됩니다.
+        아래 **Create** 버튼을 누르면 `no-ai-gym/본인아이디` 레포지토리가 자동 생성되고 초대장이 발송됩니다.
   - type: checkboxes
     id: rules
     attributes:
